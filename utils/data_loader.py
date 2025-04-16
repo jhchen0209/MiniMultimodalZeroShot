@@ -90,6 +90,9 @@ class MultimodalDataset(Dataset):
         }
 
 def get_dataloaders(config, processor):
+    batch_size = config["training"]["batch_size"]
+    num_workers = config.get("dataloader", {}).get("num_workers", 0) 
+    
     train_dataset = MultimodalDataset(
         flickr8k_path=config["data"]["flickr8k_path"],
         cifar10_path=config["data"]["cifar10_path"],
@@ -108,16 +111,16 @@ def get_dataloaders(config, processor):
 
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=config["training"]["batch_size"],
+        batch_size=batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=num_workers,
         pin_memory=True
     )
     val_dataloader = DataLoader(
         val_dataset,
-        batch_size=config["training"]["batch_size"],
+        batch_size=batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=num_workers,
         pin_memory=True
     )
 

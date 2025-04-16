@@ -13,3 +13,5 @@ model:
   llm: "Qwen/Qwen2-0.5B"
   vision: "openai/clip-vit-base-patch32"
   lora_rank: 16
+dataloader:
+  num_workers: 4
