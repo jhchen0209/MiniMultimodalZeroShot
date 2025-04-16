@@ -10,15 +10,16 @@ class MultimodalModel(nn.Module):
         self.llm = QwenModel(model_name=llm_model_name, use_lora=True, lora_rank=lora_rank)
         self.vision = CLIPVisionModel(model_name=vision_model_name)
 
-        # 適配器層：視覺特徵 (768) 到 LLM 隱藏維度 (896)
-        self.vision_to_llm = nn.Linear(768, self.llm.model.config.hidden_size) # 將 CLIP 的特徵投影到 Qwen 的維度
-        # 將適配器層轉換為 float16
+        # 將 CLIP 輸出的 768 維向量轉換為 Qwen LLM 的隱藏維度（896）。
+        self.vision_to_llm = nn.Linear(768, self.llm.model.config.hidden_size)
+        # 轉換為 float16
         self.vision_to_llm = self.vision_to_llm.half()
-        
-        self.text_to_vision = nn.Linear(self.llm.model.config.hidden_size, 768) # 可用於反向（例如圖文對齊）
+        # 將 Qwen 的輸出轉成 768 維，對齊視覺空間，用在圖文對比任務。
+        self.text_to_vision = nn.Linear(self.llm.model.config.hidden_size, 768)
         self.text_to_vision = self.text_to_vision.half()
         self.dropout = nn.Dropout(0.1)
-
+    
+    # 圖文對齊
     def forward(self, pixel_values, input_ids, attention_mask=None):
         vision_features = self.vision(pixel_values)
         vision_features = self.vision_to_llm(vision_features)
@@ -47,7 +48,7 @@ class MultimodalModel(nn.Module):
         device = self.llm.model.device
         batch_size = pixel_values.size(0)  # 獲取批次大小
         
-        # 處理視覺特徵，確保是 float16
+        # 處理視覺特徵
         pixel_values = pixel_values.to(device=device, dtype=torch.float16)
         with torch.amp.autocast('cuda'):  
             vision_features = self.vision(pixel_values)
@@ -61,7 +62,7 @@ class MultimodalModel(nn.Module):
                 input_ids = inputs["input_ids"].to(device)
                 attention_mask = inputs["attention_mask"].to(device)
                 
-                with torch.amp.autocast('cuda'):  # 修正棄用警告
+                with torch.amp.autocast('cuda'):
                     embeddings = self.llm.model.get_input_embeddings()(input_ids)
                     combined_embeddings = torch.cat([vision_features, embeddings], dim=1)
                     
