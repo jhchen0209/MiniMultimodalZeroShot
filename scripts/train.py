@@ -44,16 +44,7 @@ def main():
     print("Starting training...")
     trainer.train()
 
-    # 訓練後評估
-    print("Evaluating model...")
-    evaluator = Evaluator(
-        model=model,
-        config=config,
-        processor=model.vision.processor
-    )
-    results = evaluator.run_evaluation()
-    print(f"Classification Accuracy: {results['classification_accuracy']:.4f}")
-    print(f"Description BLEU Score: {results['description_bleu']:.4f}")
+    print("Training done")
 
 if __name__ == "__main__":
     main()
