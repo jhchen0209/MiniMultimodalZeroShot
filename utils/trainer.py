@@ -1,8 +1,7 @@
-# utils/trainer.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast  # 更新導入
 from tqdm import tqdm
 import os
 from models.multimodal import MultimodalModel
@@ -15,6 +14,13 @@ class Trainer:
         self.config = config
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.use_amp = self.device.type == "cuda"
+
+        if self.use_amp:
+            self.scaler = GradScaler()
+        else:
+            self.scaler = None  # AMP 無法在 CPU 上使用
+            
         self.model.to(self.device)
 
         learning_rate = float(config["training"]["learning_rate"])
@@ -24,7 +30,7 @@ class Trainer:
             weight_decay=0.01
         )
 
-        self.scaler = GradScaler()
+        self.scaler = GradScaler()  # 更新為新 API
         self.contrastive_weight = config.get("training", {}).get("contrastive_weight", 0.5)
         self.generation_weight = config.get("training", {}).get("generation_weight", 0.5)
         self.output_dir = config.get("training", {}).get("output_dir", "checkpoints")
@@ -46,7 +52,7 @@ class Trainer:
 
         self.optimizer.zero_grad()
 
-        with autocast():
+        with autocast(device_type=self.device.type, enabled=self.use_amp):
             # 提取視覺特徵
             vision_features = self.model.vision(pixel_values)
             # 提取文字特徵
@@ -64,8 +70,8 @@ class Trainer:
                 attention_mask=attention_mask
             )
             # 忽略圖像 token（第一個 token）
-            shift_logits = logits[:, 1:-1, :].contiguous()  # 從第 1 個 token 開始
-            shift_labels = input_ids[:, 1:].contiguous()   # 對齊標籤
+            shift_logits = logits[:, 1:, :].contiguous()
+            shift_labels = input_ids[:, 1:].contiguous()
             generation_loss = F.cross_entropy(
                 shift_logits.view(-1, shift_logits.size(-1)),
                 shift_labels.view(-1),
@@ -76,10 +82,13 @@ class Trainer:
                 self.contrastive_weight * contrastive_loss +
                 self.generation_weight * generation_loss
             )
-
-        self.scaler.scale(total_loss).backward()
-        self.scaler.step(self.optimizer)
-        self.scaler.update()
+        if self.use_amp:
+            self.scaler.scale(total_loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            total_loss.backward()
+            self.optimizer.step()
 
         return total_loss.item(), contrastive_loss.item(), generation_loss.item()
 
@@ -92,7 +101,7 @@ class Trainer:
                 input_ids = batch["text"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
 
-                with autocast():
+                with autocast(device_type=self.device.type, enabled=self.use_amp):
                     vision_features = self.model.vision(pixel_values)
                     text_features = self.model.get_text_features(
                         input_ids=input_ids,
@@ -105,7 +114,7 @@ class Trainer:
                         input_ids=input_ids,
                         attention_mask=attention_mask
                     )
-                    shift_logits = logits[:, 1:-1, :].contiguous()
+                    shift_logits = logits[:, 1:, :].contiguous()
                     shift_labels = input_ids[:, 1:].contiguous()
                     generation_loss = F.cross_entropy(
                         shift_logits.view(-1, shift_logits.size(-1)),
