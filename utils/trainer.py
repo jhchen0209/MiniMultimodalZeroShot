@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.amp import GradScaler, autocast  # 更新導入
+from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 import os
 from models.multimodal import MultimodalModel
@@ -19,7 +19,7 @@ class Trainer:
         if self.use_amp:
             self.scaler = GradScaler()
         else:
-            self.scaler = None  # AMP 無法在 CPU 上使用
+            self.scaler = None
             
         self.model.to(self.device)
 
@@ -30,7 +30,7 @@ class Trainer:
             weight_decay=0.01
         )
 
-        self.scaler = GradScaler()  # 更新為新 API
+        self.scaler = GradScaler()
         self.contrastive_weight = config.get("training", {}).get("contrastive_weight", 0.5)
         self.generation_weight = config.get("training", {}).get("generation_weight", 0.5)
         self.output_dir = config.get("training", {}).get("output_dir", "checkpoints")
@@ -69,14 +69,18 @@ class Trainer:
                 input_ids=input_ids,
                 attention_mask=attention_mask
             )
-            # 忽略圖像 token（第一個 token）
-            shift_logits = logits[:, 1:, :].contiguous()
+            
+            shift_logits = logits[:, 1:-1, :].contiguous()
             shift_labels = input_ids[:, 1:].contiguous()
+            #print("logits:", shift_logits.shape)   # 預期 (B, T-1, V)
+            #print("labels:", shift_labels.shape)   # 預期 (B, T-1)
+
             generation_loss = F.cross_entropy(
-                shift_logits.view(-1, shift_logits.size(-1)),
-                shift_labels.view(-1),
+                shift_logits.reshape(-1, shift_logits.size(-1)),
+                shift_labels.reshape(-1),
                 ignore_index=self.model.llm.tokenizer.pad_token_id
             )
+
 
             total_loss = (
                 self.contrastive_weight * contrastive_loss +
@@ -114,7 +118,7 @@ class Trainer:
                         input_ids=input_ids,
                         attention_mask=attention_mask
                     )
-                    shift_logits = logits[:, 1:, :].contiguous()
+                    shift_logits = logits[:, 1:-1, :].contiguous()
                     shift_labels = input_ids[:, 1:].contiguous()
                     generation_loss = F.cross_entropy(
                         shift_logits.view(-1, shift_logits.size(-1)),

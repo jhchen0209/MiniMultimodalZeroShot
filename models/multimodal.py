@@ -12,11 +12,9 @@ class MultimodalModel(nn.Module):
 
         # 將 CLIP 輸出的 768 維向量轉換為 Qwen LLM 的隱藏維度（896）。
         self.vision_to_llm = nn.Linear(768, self.llm.model.config.hidden_size)
-        # 轉換為 float16
-        self.vision_to_llm = self.vision_to_llm.half()
+
         # 將 Qwen 的輸出轉成 768 維，對齊視覺空間，用在圖文對比任務。
         self.text_to_vision = nn.Linear(self.llm.model.config.hidden_size, 768)
-        self.text_to_vision = self.text_to_vision.half()
         self.dropout = nn.Dropout(0.1)
     
     # 圖文對齊
