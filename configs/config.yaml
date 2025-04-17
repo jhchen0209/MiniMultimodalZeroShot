@@ -5,10 +5,11 @@ data:
 training:
   batch_size: 16
   learning_rate: 2e-5
-  epochs: 50
+  epochs: 10
   output_dir: "checkpoints"
   contrastive_weight: 0.5
   generation_weight: 0.5
+  warmup_ratio: 0.1
 model:
   llm: "Qwen/Qwen2-0.5B"
   vision: "openai/clip-vit-base-patch32"

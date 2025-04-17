@@ -5,6 +5,7 @@ from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 import os
 from models.multimodal import MultimodalModel
+from torch.optim.lr_scheduler import LambdaLR
 
 class Trainer:
     def __init__(self, model, train_dataloader, val_dataloader, config):
@@ -29,6 +30,13 @@ class Trainer:
             lr=learning_rate,
             weight_decay=0.01
         )
+        
+        self.total_epochs = config["training"]["epochs"]
+        self.total_steps = len(train_dataloader) * self.total_epochs
+        self.warmup_steps = int(self.total_steps * config["training"].get("warmup_ratio", 0.1))
+
+        # linear decay schedule
+        self.scheduler = self.get_scheduler()
 
         self.scaler = GradScaler()
         self.contrastive_weight = config.get("training", {}).get("contrastive_weight", 0.5)
@@ -36,6 +44,15 @@ class Trainer:
         self.output_dir = config.get("training", {}).get("output_dir", "checkpoints")
         os.makedirs(self.output_dir, exist_ok=True)
 
+    def get_scheduler(self):
+        def lr_lambda(current_step):
+            if current_step < self.warmup_steps:
+                return float(current_step) / float(max(1, self.warmup_steps))
+            return max(
+                0.0, float(self.total_steps - current_step) / float(max(1, self.total_steps - self.warmup_steps))
+            )
+        return LambdaLR(self.optimizer, lr_lambda)
+    
     def contrastive_loss(self, vision_features, text_features, temperature=0.07):
         vision_features = F.normalize(vision_features, dim=-1)
         text_features = F.normalize(text_features, dim=-1)
