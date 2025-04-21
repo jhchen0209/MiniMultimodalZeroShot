@@ -1,9 +1,8 @@
 data:
-  flickr8k_path: "data/flickr8k"
-  cifar10_path: "data/cifar10"
+  flickr30k_path: "data/flickr30k"
   max_samples: 20000
 training:
-  batch_size: 32
+  batch_size: 16
   learning_rate: 2e-5
   epochs: 50
   output_dir: "checkpoints"

@@ -1,3 +1,4 @@
+# utuls/trainer.py
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,17 +31,16 @@ class Trainer:
             weight_decay=0.01
         )
 
-        self.scaler = GradScaler()
         self.contrastive_weight = config.get("training", {}).get("contrastive_weight", 0.5)
         self.generation_weight = config.get("training", {}).get("generation_weight", 0.5)
         self.output_dir = config.get("training", {}).get("output_dir", "checkpoints")
         os.makedirs(self.output_dir, exist_ok=True)
 
     def contrastive_loss(self, vision_features, text_features, temperature=0.07):
-        vision_features = F.normalize(vision_features, dim=-1)
-        text_features = F.normalize(text_features, dim=-1)
-        logits = torch.matmul(vision_features, text_features.t()) / temperature
-        labels = torch.arange(logits.size(0)).to(self.device)
+        vision_features = F.normalize(vision_features, dim=-1)  # L2-norm 後續用內積計算相似度
+        text_features = F.normalize(text_features, dim=-1)  # feature shape: [batch_size, feature_dim]
+        logits = torch.matmul(vision_features, text_features.t()) / temperature #內積後除以溫度參數
+        labels = torch.arange(logits.size(0)).to(self.device)   # 建立索引tensor
         loss_i2t = F.cross_entropy(logits, labels)
         loss_t2i = F.cross_entropy(logits.t(), labels)
         return (loss_i2t + loss_t2i) / 2

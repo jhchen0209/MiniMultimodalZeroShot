@@ -6,7 +6,7 @@ from .vision import CLIPVisionModel
 
 class MultimodalModel(nn.Module):
     def __init__(self, llm_model_name="Qwen/Qwen2-0.5B", vision_model_name="openai/clip-vit-base-patch32", lora_rank=16):
-        super(MultimodalModel, self).__init__()
+        super().__init__()
         self.llm = QwenModel(model_name=llm_model_name, use_lora=True, lora_rank=lora_rank)
         self.vision = CLIPVisionModel(model_name=vision_model_name)
 
@@ -17,17 +17,19 @@ class MultimodalModel(nn.Module):
         self.text_to_vision = nn.Linear(self.llm.model.config.hidden_size, 768)
         self.dropout = nn.Dropout(0.1)
     
-    # 圖文對齊
+    # 組合影像與文字特徵，Return logits
     def forward(self, pixel_values, input_ids, attention_mask=None):
+        # vision
         vision_features = self.vision(pixel_values)
         vision_features = self.vision_to_llm(vision_features)
         vision_features = self.dropout(vision_features)
-
         batch_size = input_ids.size(0)
-        vision_token = vision_features.unsqueeze(1)
-        embeddings = self.llm.model.get_input_embeddings()(input_ids) # 文本轉 embedding
+        vision_token = vision_features.unsqueeze(1) # 升維，使其可以和文本的 embedding 進行拼接
+        # text
+        embeddings = self.llm.model.get_input_embeddings()(input_ids)
+        # combine
         combined_embeddings = torch.cat([vision_token, embeddings], dim=1)
-
+        
         if attention_mask is not None:
             vision_mask = torch.ones(batch_size, 1, device=input_ids.device)
             combined_mask = torch.cat([vision_mask, attention_mask], dim=1)
@@ -42,20 +44,20 @@ class MultimodalModel(nn.Module):
         )
         return outputs.logits
 
+    # 生成任務
     def generate(self, pixel_values, prompt=None, max_length=128):
         device = self.llm.model.device
-        batch_size = pixel_values.size(0)  # 獲取批次大小
+        batch_size = pixel_values.size(0)
         
-        # 處理視覺特徵
-        pixel_values = pixel_values.to(device=device, dtype=torch.float16)
+        pixel_values = pixel_values.to(device=device, dtype=torch.float32) 
         with torch.amp.autocast('cuda'):  
             vision_features = self.vision(pixel_values)
-            vision_features = vision_features.to(dtype=torch.float16)
+            vision_features = vision_features.to(dtype=torch.float16)   # 接給LLM所以手動轉F16
             vision_features = self.vision_to_llm(vision_features)
             vision_features = self.dropout(vision_features).unsqueeze(1)
 
             if prompt:
-                # 處理文本輸入，確保批次大小匹配
+                # 處理文本輸入
                 inputs = self.llm.encode_text([prompt] * batch_size)  # 為每個圖像複製相同的提示
                 input_ids = inputs["input_ids"].to(device)
                 attention_mask = inputs["attention_mask"].to(device)
@@ -64,7 +66,6 @@ class MultimodalModel(nn.Module):
                     embeddings = self.llm.model.get_input_embeddings()(input_ids)
                     combined_embeddings = torch.cat([vision_features, embeddings], dim=1)
                     
-                    # 為視覺特徵添加 attention mask
                     vision_mask = torch.ones((batch_size, 1), device=device)
                     combined_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
             else:
@@ -85,6 +86,7 @@ class MultimodalModel(nn.Module):
         
         return self.llm.tokenizer.batch_decode(outputs, skip_special_tokens=True)
     
+    # image前處理
     def preprocess(self, images, texts=None):
         pixel_values = self.vision.preprocess_image(images).to(self.llm.model.device)
         if texts:
@@ -96,8 +98,8 @@ class MultimodalModel(nn.Module):
             }
         return {"pixel_values": pixel_values}
 
+    # 提取文字特徵並映射到視覺特徵空間
     def get_text_features(self, input_ids, attention_mask=None):
-        # 提取文字特徵並映射到視覺特徵空間
         text_outputs = self.llm.model(
             input_ids=input_ids,
             attention_mask=attention_mask,

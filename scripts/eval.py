@@ -1,4 +1,4 @@
-# scripts/train2.py
+# scripts/eval.py
 import sys
 import os
 
@@ -33,8 +33,8 @@ def main():
     # 載入檢查點
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
-    checkpoint_path = "checkpoints/best_model.pth"
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint_path = "checkpoints/best_model1.pth"
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     print(f"Loaded checkpoint from {checkpoint_path}")
@@ -42,7 +42,7 @@ def main():
     # 評估模型
     print("Evaluating model...")
     evaluator = Evaluator(
-        model=model,
+        model=model.float(),
         config=config,
         processor=model.vision.processor
     )
